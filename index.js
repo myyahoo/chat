@@ -8,19 +8,22 @@ const http = require('http')
 
 const { ChannelModel, ChannelMemberModel, MessageModel } = require('./models/ChannelModel');
 
-const app = express();
-const server = http.createServer(app);
 const mongoose = require('mongoose');
 const connectDB = require('./config/connectDB');
 
 const { createClient } = require("redis");
 const { createAdapter } = require("@socket.io/redis-adapter");
-const { Channel } = require('diagnostics_channel');
+//const { Channel } = require('diagnostics_channel');
+const socketUpload = require("socketio-file-upload");
+const md5 = require("md5");
+
+const app = express().use(express.static(__dirname + '/')).use(socketUpload.router);
+const server = http.createServer(app);
+require('dotenv').config()
 
 const pubClient = createClient({ url: "redis://localhost:6379" });
 const subClient = pubClient.duplicate();
 
-require('dotenv').config()
 
 Promise.all([
   pubClient.connect(),
@@ -34,37 +37,53 @@ const io = socketIo(server, {
     methods: ["GET", "POST"]
   }
 });
-/*
+
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
-*/
+
 // 메시지 스키마 및 모델 정의
 
 
 
 io.on('connection', (socket) => {
+  console.log(__dirname);
   console.log('a user connected');
   console.log(socket.id);
 
-  // 방 참여 처리
-  socket.on('join channel', async (data) => {
+  // file upload
+  let uploader = new socketUpload();
+  uploader.dir = __dirname+"/static";
+  uploader.listen( socket );
+  uploader.on("saved", function(event) {
+      console.log(event.file);
+  });
+  uploader.on("error", function(event) {
+    
+    console.log(__dirname);
+    console.log("Error from uploader", event);
+  });
 
+  // 방 참여 처리
+  socket.on('change channel', async (data) => {
     //  channelmember 에 추가
     try {
       const result = await ChannelMemberModel.findOne({
         channel_id: data?.channel_id,
         user_id: data?.user_id
       });
+      console.log(data);
       if (result) {
         console.log('Channel member found:', result);
       } else {
+          /*
             const newChannelMember = new ChannelMemberModel({
                 channel_id: data.channel_id,
                 user_id: data.user_id
             });
 
             result = await newChannelMember.save();
+            */
       }
     } catch (err) {
       console.error('Error finding channel member:', err);
@@ -81,19 +100,57 @@ io.on('connection', (socket) => {
 
   });
 
-  socket.on('create channel', async (data) => {
+  //  init 
+  socket.on('init', async (data) => {
 
     let user_id = data.user_id;
-    let channel_id = data.channel_id;
+    //let channel_id = data.channel_id;
+    try {
+      const channels = await ChannelModel.find({ user_id: data?.user_id }).exec();
+      let channelDtos = new Array();
+    
+      console.log("init");
+      console.log(channels);
+
+      channels.forEach((value)=>{
+        channelDtos.push({'channel_name':value.channel_name,'channel_id':value.channel_id});
+      })
+      socket.emit('channel list',channelDtos);
+      console.log(channelDtos);
+
+      socket.to(data.user_id).emit('channel list',channelDtos);
+    } catch (e) {
+      console.log(e);
+    }
+  })
+
+
+  // create 
+  socket.on('create channel', async (data) => {
+
+    let new_channel_name = data.channel_name;
 
     try {
-      const channel = await ChannelModel.findOne({ id: data?.channel_id }).exec();
-      console.log('create channel');
-      console.log(channel);
+
+      let new_channel_id = md5(Date.now());
+
+      const channel = await ChannelModel.findOne({ channel_id: new_channel_id }).exec();
+      
       if (!channel) {
-        const channel = new ChannelModel({ name: 'dd', id: data?.channel_id, owner_id: data?.user_id })
+        const channel = new ChannelModel({ channel_name: new_channel_name, channel_id: new_channel_id, user_id: data?.user_id })
         await channel.save(channel);
         io.emit('created channel', 'done');
+        console.log('create channel ${new_channel_name}');
+
+        const channels = await ChannelModel.find({ user_id: data?.user_id }).exec();
+        let channelDtos = new Array();
+      
+
+        channels.forEach((value)=>{
+          channelDtos.push({'channel_name':value.channel_name,'channel_id':value.channel_id});
+        })
+        socket.emit('channel list',channelDtos);
+        console.log(channelDtos);
       }
     } catch (e) {
       console.log(e);

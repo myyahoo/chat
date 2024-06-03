@@ -2,9 +2,9 @@ const { default: mongoose } = require("mongoose");
 
 
 const channelSchema = new mongoose.Schema({
-    name: { type: String, required: true, index: true },
-    id: { type: String, required: true ,index:true},
-    owner_id: { type: String, required: true, index:true },
+    channel_name: { type: String, required: true, index: true },
+    channel_id: { type: String, required: true ,index:true},
+    user_id: { type: String, required: true, index:true },
     timestamp: { type: Date, default: Date.now, index: true }
   });
   
