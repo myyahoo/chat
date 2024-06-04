@@ -45,7 +45,16 @@ app.get('/', (req, res) => {
 // 메시지 스키마 및 모델 정의
 
 
-
+/**
+ *  action:
+ *   - change channel
+ *   - init
+ *   - create channel
+ *   - chat message
+ *
+ *
+ *
+ **/
 io.on('connection', (socket) => {
   console.log(__dirname);
   console.log('a user connected');
